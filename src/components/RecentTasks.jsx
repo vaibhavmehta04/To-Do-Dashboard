@@ -2,101 +2,137 @@ import React, { useEffect, useState } from "react";
 
 const RecentTasks = ({ selectedFolder }) => {
   const [tasks, setTasks] = useState([]);
-  const [taskInput, setTaskInput] = useState("");
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [input, setInput] = useState("");
+  const [taskDate, setTaskDate] = useState(getTodayLocalDate());
 
-  // Load tasks from localStorage
+  // ✅ Get today's date in local yyyy-mm-dd
+  function getTodayLocalDate() {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const local = new Date(now.getTime() - offset * 60000);
+    return local.toISOString().split("T")[0];
+  }
+
+  // ✅ Convert any selected date to local yyyy-mm-dd
+  function getLocalDateString(date) {
+    const offset = date.getTimezoneOffset();
+    const local = new Date(date.getTime() - offset * 60000);
+    return local.toISOString().split("T")[0];
+  }
+
   useEffect(() => {
-    const storedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
-    setTasks(storedTasks);
+    const active = JSON.parse(localStorage.getItem("tasks")) || [];
+    const done = JSON.parse(localStorage.getItem("completedTasks")) || [];
+    setTasks(active);
+    setCompletedTasks(done);
   }, []);
 
-  // Save tasks to localStorage on change
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
+  const saveActive = (newTasks) => {
+    localStorage.setItem("tasks", JSON.stringify(newTasks));
+    setTasks(newTasks);
+  };
 
-  const handleAddTask = () => {
-    if (!taskInput.trim() || !selectedFolder) return;
+  const saveCompleted = (done) => {
+    localStorage.setItem("completedTasks", JSON.stringify(done));
+    setCompletedTasks(done);
+  };
+
+  const addTask = () => {
+    if (!input.trim()) return;
 
     const newTask = {
       id: Date.now(),
-      text: taskInput.trim(),
-      folderId: selectedFolder.id,
-      date: new Date().toISOString().split("T")[0],
+      text: input,
       completed: false,
+      folder: selectedFolder || "Uncategorized",
+      date: getLocalDateString(new Date(taskDate)), // ✅ Correct local date
     };
 
-    setTasks([newTask, ...tasks]);
-    setTaskInput("");
+    const newTasks = [...tasks, newTask];
+    saveActive(newTasks);
+    setInput("");
+    setTaskDate(getTodayLocalDate());
   };
 
-  const handleToggleComplete = (id) => {
-    setTasks((prev) =>
-      prev.map((task) =>
-        task.id === id ? { ...task, completed: !task.completed } : task
-      )
-    );
+  const toggleComplete = (id) => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    const updated = tasks.filter((t) => t.id !== id);
+    saveActive(updated);
+    saveCompleted([{ ...task, completed: true }, ...completedTasks]);
   };
 
-  const handleDelete = (id) => {
-    setTasks((prev) => prev.filter((task) => task.id !== id));
+  const deleteTask = (id) => {
+    const updated = tasks.filter((t) => t.id !== id);
+    saveActive(updated);
   };
 
-  const filteredTasks = selectedFolder
-    ? tasks.filter((task) => task.folderId === selectedFolder.id)
-    : [];
+  const deleteCompletedTask = (id) => {
+    const updated = completedTasks.filter((t) => t.id !== id);
+    saveCompleted(updated);
+  };
+
+  const filtered = tasks.filter((t) => t.folder === selectedFolder);
+  const filteredCompleted = completedTasks.filter(
+    (t) => t.folder === selectedFolder
+  );
 
   return (
-    <div className="bg-base-100 p-6 rounded-2xl shadow space-y-4">
-      <h2 className="text-xl font-bold">Recent Tasks</h2>
-
-      {selectedFolder ? (
-        <>
+    <div className="bg-base-100 text-base-content p-6 rounded-2xl shadow space-y-6">
+      <div>
+        <h2 className="text-xl font-bold">
+          Tasks {selectedFolder && `(${selectedFolder})`}
+        </h2>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
           <input
             type="text"
-            placeholder="Enter a task"
-            value={taskInput}
-            onChange={(e) => setTaskInput(e.target.value)}
-            className="input input-bordered w-full"
+            placeholder={`Add task in "${selectedFolder}"...`}
+            className="input input-bordered input-sm w-full"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
           />
-          <button onClick={handleAddTask} className="btn btn-primary w-full mt-2">
-            Add Task
+          <input
+            type="date"
+            className="input input-bordered input-sm"
+            value={taskDate}
+            onChange={(e) => setTaskDate(e.target.value)}
+          />
+          <button onClick={addTask} className="btn btn-primary btn-sm">
+            Add
           </button>
-        </>
-      ) : (
-        <>
-          <p className="text-sm text-warning font-semibold">
-            Please select or create a folder to add tasks.
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Tasks are added inside folders. Select a folder first.
-          </p>
-        </>
-      )}
+        </div>
+      </div>
 
-      <ul className="space-y-2 pt-4">
-        {filteredTasks.length === 0 && selectedFolder && (
-          <p className="text-sm text-gray-500 italic">No tasks in this folder yet.</p>
+      <ul className="space-y-2">
+        {filtered.length === 0 && (
+          <p className="text-sm text-gray-400">No active tasks.</p>
         )}
-
-        {filteredTasks.map((task) => (
+        {filtered.map((task) => (
           <li
             key={task.id}
-            className={`flex justify-between items-center p-3 rounded-lg ${
-              task.completed ? "bg-success/20 line-through text-success" : "bg-base-300"
-            }`}
+            className="flex justify-between items-center bg-base-200 p-2 rounded-lg"
           >
-            <span>{task.text}</span>
-            <div className="space-x-2">
-              <button
-                onClick={() => handleToggleComplete(task.id)}
-                className="btn btn-xs btn-outline"
+            <div className="flex flex-col w-full pr-2">
+              <span
+                className={`truncate ${
+                  task.completed ? "line-through text-gray-400" : ""
+                }`}
               >
-                {task.completed ? "Undo" : "Done"}
-              </button>
+                {task.text}
+              </span>
+              <span className="text-xs text-gray-400">📅 {task.date}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="checkbox checkbox-sm"
+                checked={task.completed}
+                onChange={() => toggleComplete(task.id)}
+              />
               <button
-                onClick={() => handleDelete(task.id)}
-                className="btn btn-xs btn-error"
+                className="btn btn-xs btn-error text-white"
+                onClick={() => deleteTask(task.id)}
               >
                 ✕
               </button>
@@ -104,6 +140,31 @@ const RecentTasks = ({ selectedFolder }) => {
           </li>
         ))}
       </ul>
+
+      {filteredCompleted.length > 0 && (
+        <div>
+          <h3 className="text-md font-semibold">Completed Tasks</h3>
+          <ul className="space-y-2 mt-2">
+            {filteredCompleted.map((task) => (
+              <li
+                key={task.id}
+                className="flex justify-between items-center bg-base-200 p-2 rounded-lg"
+              >
+                <div className="flex flex-col w-full pr-2">
+                  <span className="line-through text-gray-400">{task.text}</span>
+                  <span className="text-xs text-gray-400">📅 {task.date}</span>
+                </div>
+                <button
+                  className="btn btn-xs btn-error text-white"
+                  onClick={() => deleteCompletedTask(task.id)}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };
